@@ -19,6 +19,7 @@ ARG USER_GID=1000
 
 ENV PYTHONUNBUFFERED 1
 
+ENV logging_level="INFO"
 ENV bot_token="S3CR3TP@55W0RD"
 ENV server_ip="127.0.0.1"
 ENV mc_version="mc_version"

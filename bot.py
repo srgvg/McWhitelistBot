@@ -5,6 +5,11 @@ from discord.ext import commands
 from modules import *
 import modules
 
+import logging
+logging_level = os.getenv('logging_level')
+level = logging.getLevelName(logging_level)
+logging.basicConfig(level=level)
+
 bot = commands.Bot(command_prefix='.')
 bot_token = os.getenv('bot_token')
 server_ip = os.getenv('server_ip')
