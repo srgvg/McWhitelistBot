@@ -8,7 +8,9 @@ import modules
 import logging
 logging_level = os.getenv('logging_level')
 level = logging.getLevelName(logging_level)
-logging.basicConfig(level=level)
+logging.basicConfig(level=level,
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
 
 bot = commands.Bot(command_prefix='.')
 bot_token = os.getenv('bot_token')
@@ -28,7 +30,7 @@ def take_request(message_id):
 
 @bot.event
 async def on_ready():
-    print('Ready, username: {}'.format(bot.user.name))
+    logging.info('Ready, username: {}'.format(bot.user.name))
     await bot.change_presence(activity=discord.Game('Minecraft'), status=discord.Status.online)
     # TODO: Read pending requests out of file
 
@@ -39,9 +41,12 @@ async def on_disconnect():
 
 
 @bot.event
-async def on_reaction_add(reaction, user):
+async def on_raw_reaction_add(payload):
+    channel = await bot.fetch_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+    user = await bot.fetch_user(payload.user_id)
     if not user.bot:
-        msg = reaction.message
+        msg = message
         if msg.author == bot.user:
             admin = user
             current = take_request(msg.id)
@@ -49,10 +54,12 @@ async def on_reaction_add(reaction, user):
             if type(current) == request.WhitelistRequest:
                 mc_name = current.mc_name
                 dc_user = await bot.fetch_user(current.author_id)
-                if reaction.emoji == '✅':
+                logging.info('Got WhitelistRequest, emoji reaction: "{}"'.format(payload.emoji))
+                if str(payload.emoji) == '✅':
+                    logging.info('Got ✅ reaction.')
                     uuid = current.uuid
                     await modules.filemanager.write_whitelist(mc_name, uuid)
-                    print('Player whitelisted: {} {}'.format(mc_name, uuid))
+                    logging.info('Player whitelisted: {} {}'.format(mc_name, uuid))
                     embed = discord.Embed(title='Server', color=0x22a7f0)
                     embed.add_field(name='IP', value=server_ip)
                     embed.add_field(name='Version', value=mc_version)
@@ -61,29 +68,39 @@ async def on_reaction_add(reaction, user):
                         ' until you will be able to join the server.'.format(mc_name),
                         embed=embed)
                     await admin.send('The player `{}` was whitelisted.'.format(mc_name))
+                    logging.info('The player `{}` was whitelisted.'.format(mc_name))
                 else:
                     await admin.send('The request for the player `{}` was denied.'.format(mc_name))
                     await dc_user.send('Your request for the player `{}`was denied.'.format(mc_name))
+                    logging.info('The request for the player `{}` was denied.'.format(mc_name))
 
 
 @bot.command()
 async def whitelist(ctx, arg):
     mc_name = arg
     member = ctx.author
+    logging.info('Got whitelist request for {}, from {}'.format(mc_name,
+                                                                member.mention))
     await ctx.message.delete()
-    print('Checking if Admin defined...')
+    logging.info('Checking if Admin defined...')
     if not modules.filemanager.get_admin_id(member.guild.id):
         await ctx.send('Fatal Error: No admin defined for this server.')
         return
-    print('Fetching admin ID...')
+    logging.info('Fetching admin ID...')
     admin_id = modules.filemanager.get_admin_id(member.guild.id)
-    print('Fetching admin user...')
+    logging.info('Fetching admin user...')
     admin = await bot.fetch_user(admin_id)
-    print('Fetching UUID...')
+    logging.info('Got admin user {} admin')
+    logging.info('Fetching UUID for user {} ...'.format(mc_name))
     uuid = util.get_uuid(mc_name)
+    logging.info('Got UUID {}'.format(uuid))
     if not uuid:
+        logging.info('Player `{}` not found {}.'.format(mc_name, member.mention))
         await ctx.send('Player `{}` not found {}.'.format(mc_name, member.mention))
         return
+    else:
+        logging.info('Player `{}` was found {}.'.format(mc_name, member.mention))
+        await ctx.send('Player `{}` was found {}.'.format(mc_name, member.mention))
     embed = discord.Embed(title='Whitelist request', color=0x22a7f0)
     embed.add_field(name='by', value=ctx.author.mention)
     embed.add_field(name='MC-Username', value=mc_name)
@@ -93,12 +110,13 @@ async def whitelist(ctx, arg):
     await admin_msg.add_reaction('❌')
     requests_messages.append(request.WhitelistRequest(ctx.author.id, admin_msg.id, mc_name, uuid))
     await ctx.send('Your request for whitelisting `{}` was sent {}.'.format(mc_name, member.mention))
+    logging.info('Your request for whitelisting `{}` was sent {}.'.format(mc_name, member.mention))
 
 
 @bot.command()
 async def imtheadmin(ctx):
-    author = ctx.author
-    guild_id = ctx.author.guild.id
+    author = ctx.message.author
+    guild_id = ctx.message.guild.id
     await ctx.message.delete()
     old_admin_id = modules.filemanager.get_admin_id(guild_id)
     if old_admin_id:
@@ -111,8 +129,10 @@ async def imtheadmin(ctx):
         await admin_msg.add_reaction('✅')
         await admin_msg.add_reaction('❌')
         await ctx.send('Your request for administration privileges was sent to an existing admin. ' + author.mention)
+        logging.info('Your request for administration privileges was sent to an existing admin. ' + author.mention)
     else:
         modules.filemanager.add_admin(author.id, guild_id)
+        logging.info('Your request for administration privileges was processed. ')
 
 
 @whitelist.error
