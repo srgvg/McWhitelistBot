@@ -1,6 +1,7 @@
 import os
 import discord
 from discord.ext import commands
+from mcrcon import MCRcon
 
 from modules import *
 import modules
@@ -16,9 +17,17 @@ bot = commands.Bot(command_prefix='.')
 bot_token = os.getenv('bot_token')
 server_ip = os.getenv('server_ip')
 mc_version = os.getenv('mc_version')
+mcrcon_secret = os.getenv('mcrcon_secret')
 
 requests_messages = []
 
+
+def mcrcon_command(command):
+    if mcrcon_secret is not None:
+        with MCRcon(server_ip, mcrcon_secret) as mcr:
+            response = mcr.command(command)
+            logging.info('Sent command "{}" to server "{}" and got reponse "{}"'.format(command, server_ip, response))
+            return response
 
 def take_request(message_id):
     for i in requests_messages:
@@ -59,6 +68,7 @@ async def on_raw_reaction_add(payload):
                     logging.info('Got ✅ reaction.')
                     uuid = current.uuid
                     await modules.filemanager.write_whitelist(mc_name, uuid)
+                    mcrcon_command("/whitelist add {}".format(mc_name))
                     logging.info('Player whitelisted: {} {}'.format(mc_name, uuid))
                     embed = discord.Embed(title='Server', color=0x22a7f0)
                     embed.add_field(name='IP', value=server_ip)
